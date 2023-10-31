@@ -53,8 +53,12 @@ FLAG = {
     "FL_NEG" : 1 << 2   # N
 }
 
+def memory_write(address, value):
+    MEMORY[address] = value
+
+
 def memory_read(address):
-    if address == MR_KBSR:
+    pass
         
 
 def update_flags(register):
@@ -71,32 +75,39 @@ def sign_extend(instruction, bit_size):
         instruction |= (0xFFFF << bit_size)
     return instruction
 
+
 def BRANCH(instruction):
     pass
 
 
 def ADD(instruction):
-    destination_register = (instruction >> 9) & 0x7 # move over 9 bits, then compare with 0x7 to extract the 3 rightmost bits
-    operand_register_1 = (instruction >> 6) & 0x7
+    destination_register_code = (instruction >> 9) & 0x7 # move over 9 bits, then compare with 0x7 to extract the 3 rightmost bits
+    operand_register_1_code = (instruction >> 6) & 0x7
     imm5_flag = (instruction >> 5) & 0x1 # move over five bits, then compare with 0x1 to extract the rightmost bit which is the indicator of imm5 mode
 
     if imm5_flag:
         imm5 = sign_extend(instruction & 0x1F, 5)
-        REG[destination_register] = REG[operand_register_1] + imm5
+        REG[destination_register_code] = REG[operand_register_1_code] + imm5
         pass # add the number found in the last 5 bits
     else:
-        operand_register_2 = instruction & 0x7 # get rightmost three bits, which is the second operand register per the ADD instruction's documentaion (SR2)
-        REG[destination_register] = REG[operand_register_1] + REG[operand_register_2]
+        operand_register_2_code = instruction & 0x7 # get rightmost three bits, which is the second operand register per the ADD instruction's documentaion (SR2)
+        REG[destination_register_code] = REG[operand_register_1_code] + REG[operand_register_2_code]
     
-    update_flags(destination_register)
+    update_flags(destination_register_code)
 
 
 def LOAD(instruction):
-    pass
+    destination_register_code = (instruction >> 9) & 0x7
+    pc_offset = sign_extend(instruction & 0x1FF, 9)
+    REG[destination_register_code] = memory_read(REG["R_PC"] + pc_offset)
+    update_flags(destination_register_code)
 
 
-def STORE():
-    pass
+def STORE(instruction):
+    source_register_code = (instruction >> 9) & 0x7
+    pc_offset = sign_extend(instruction & 0x1FF, 9)
+    destination_memory_address = REG["R_PC"] + pc_offset
+    memory_write(destination_memory_address, REG[source_register_code])
 
 
 def JUMP_REG():
@@ -107,11 +118,20 @@ def BIT_AND():
     pass
 
 
-def LOAD_REG():
-    pass
+def LOAD_REG(instruction):
+    destination_register_code = (instruction >> 9) & 0x7
+    base_register_code = (instruction >> 6) & 0x7
+    offset = sign_extend((instruction & 0x3F, 6))
+    REG[destination_register_code] = memory_read(REG[base_register_code] + offset)
+    update_flags(destination_register_code)
 
 
-def STORE_REG():
+def STORE_REG(instruction):
+    source_register_code = (instruction >> 9) & 0x7
+    base_register_code = (instruction >> 6) & 0x7
+    offset = sign_extend((instruction & 0x3F), 6)
+    destination_memory_address = REG[base_register_code] + offset
+    memory_write(destination_memory_address, REG[source_register_code])
     pass
 
 
@@ -126,25 +146,34 @@ def BIT_NOT():
 def LOAD_INDIRECT(instruction):
     destination_register = (instruction >> 9) & 0x7
     pc_offset = sign_extend(instruction & 0x1FF, 9)
-    REG[destination_register] = memory_read(REG["R_PC"] + pc_offset)
-    update_flags(REG[destination_register])
+    indirect_memory_address = REG["R_PC"] + pc_offset
+    direct_memory_address = memory_read(indirect_memory_address)
+    REG[destination_register] = memory_read(direct_memory_address)
+    update_flags(REG[destination_register])    
+
+
+def STORE_INDIRECT(instruction):
+    source_register_code = (instruction >> 9) & 0x7
+    pc_offset = sign_extend((instruction & 0x1FF, 9))
+    indirect_memory_address = pc_offset + REG["R_PC"]
+    direct_memory_address = memory_read(indirect_memory_address) 
+    memory_write(direct_memory_address, REG[source_register_code])
+
+
+def JUMP(instruction):
+    base_register = (instruction >> 6) & 0x7
+    REG["R_PC"] = REG[base_register]
     
-
-
-def STORE_INDIRECT():
-    pass
-
-
-def JUMP():
-    pass
-
 
 def RES():
     pass
 
 
-def LOAD_EFFECTIVE_ADDRESS():
-    pass
+def LOAD_EFFECTIVE_ADDRESS(instruction):
+    destination_register_code = (instruction >> 9) & 0x7
+    pc_offset = sign_extend(instruction & 0x1FF, 9)
+    REG[destination_register_code] = REG["R_PC"] + pc_offset
+    update_flags(destination_register_code) 
 
 
 def TRAP():
