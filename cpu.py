@@ -13,15 +13,24 @@ MR_KBDR = 0xFE02
 
 START = 0x3000
 
+TRAP_GETC_ADDR = 0x20
+TRAP_OUT_ADDR = 0x21
+TRAP_PUTS_ADDR = 0x22
+TRAP_IN_ADDR = 0x23
+TRAP_PUTSP_ADDR = 0x24
+TRAP_HALT_ADDR = 0x25
+
+
+
 REG = {
-    "R0": 0,
-    "R1": 0,
-    "R2": 0,
-    "R3": 0,
-    "R4": 0,
-    "R5": 0,
-    "R6": 0,
-    'R7': 0,
+    0   : 0,
+    1   : 0,
+    2   : 0,
+    3   : 0,
+    4   : 0,
+    5   : 0,
+    6   : 0,
+    7   : 0,
     "R_PC": 0,
     "R_COND": 0,
     "R_COUNT": 0
@@ -53,6 +62,11 @@ FLAG = {
     "FL_NEG" : 1 << 2   # N
 }
 
+
+def swap16(number):
+    return (number << 8) | (number >> 8)
+
+
 def memory_write(address, value):
     MEMORY[address] = value
 
@@ -77,7 +91,10 @@ def sign_extend(instruction, bit_size):
 
 
 def BRANCH(instruction):
-    pass
+    pc_offset = sign_extend(instruction & 0x1FF, 9)
+    nzp_conditional_flag_bits = (instruction >> 9) & 0x7
+    if (REG["R_COND"] & nzp_conditional_flag_bits):
+        REG["R_PC"] = REG["R_PC"] + pc_offset
 
 
 def ADD(instruction):
@@ -110,12 +127,27 @@ def STORE(instruction):
     memory_write(destination_memory_address, REG[source_register_code])
 
 
-def JUMP_REG():
-    pass
+def JUMP_REG(instruction):
+    REG[7] = REG["R_PC"]
+    bit_flag = (instruction >> 11) & 1
+    if bit_flag == 0:
+        subroutine_address = (instruction >> 6) & 0x7
+        REG["R_PC"] = REG[subroutine_address]
+    else:
+        pc_offset = sign_extend(instruction & 0x7FF, 11)
+        REG["R_PC"] = pc_offset + REG["R_PC"]
 
 
-def BIT_AND():
-    pass
+def BIT_AND(instruction):
+    destination_register_code = (instruction >> 9) & 0x7
+    first_source_register_code = (instruction >> 6) & 0x7
+    bit_flag = (instruction >> 5) & 0x1
+    if bit_flag == 0:
+        second_source_register_code = (instruction & 0x7)
+        REG[destination_register_code] = REG[first_source_register_code] & REG[second_source_register_code] 
+    else:
+        imm5 = sign_extend(instruction & 0x1F, 5)
+        REG[destination_register_code] = REG[first_source_register_code] & imm5
 
 
 def LOAD_REG(instruction):
@@ -132,15 +164,18 @@ def STORE_REG(instruction):
     offset = sign_extend((instruction & 0x3F), 6)
     destination_memory_address = REG[base_register_code] + offset
     memory_write(destination_memory_address, REG[source_register_code])
-    pass
 
-
+     
 def RTI():
+    """Unused."""
     pass
 
 
-def BIT_NOT():
-    pass
+def BIT_NOT(instruction):
+    source_register_code = (instruction >> 6) & 0x7
+    destination_register_code = (instruction >> 9) & 0x7
+    REG[destination_register_code] = ~ REG[source_register_code]
+    update_flags(destination_register_code)
 
 
 def LOAD_INDIRECT(instruction):
@@ -166,6 +201,7 @@ def JUMP(instruction):
     
 
 def RES():
+    """Unused."""
     pass
 
 
@@ -176,9 +212,70 @@ def LOAD_EFFECTIVE_ADDRESS(instruction):
     update_flags(destination_register_code) 
 
 
-def TRAP():
-    pass
+def TRAP_GETC_FUNC():
+    REG[0] = ord(input())
+    update_flags(0)
 
+
+def TRAP_OUT_FUNC():
+    print(REG[0])
+
+
+def TRAP_PUTS_FUNC():
+    character = MEMORY + REG[0]
+    while character:
+        print(chr(character))
+        character += 1
+    sys.stdout.flush()
+
+
+def TRAP_IN_FUNC():
+    while True:
+        character = input("> Please enter a single character: ")
+        if len(character) > 1:
+            continue
+        else:
+            break
+    REG[0] = ord(character)
+    update_flags("R0") # only inputting key since update_flags function
+
+
+def TRAP_PUTSP_FUNC():
+    character = MEMORY + REG[0]
+    while character:
+        char1 = character & 0xFF
+        print(char1)
+        char2 = character >> 8
+        print(char2, end='')
+        character += 1
+    sys.stdout.flush()
+
+
+def TRAP_HALT_FUNC():
+    print("HALT")
+
+
+def TRAP(instruction):
+    REG[7] = REG["R_PC"]
+    trap_vector = (instruction & 0xFF)
+    if trap_vector == TRAP_GETC_ADDR:
+        TRAP_GETC_FUNC()
+    elif trap_vector == TRAP_OUT_ADDR:
+        TRAP_OUT_FUNC()
+    elif trap_vector == TRAP_PUTS_ADDR:
+        TRAP_PUTS_FUNC()
+    elif trap_vector == TRAP_IN_ADDR:
+        TRAP_IN_FUNC()
+    elif trap_vector == TRAP_PUTSP_ADDR:
+        TRAP_PUTSP_FUNC()
+    elif trap_vector == TRAP_HALT_ADDR:
+        TRAP_HALT_FUNC()
+    else:
+        print("Bad trapcode.")
+
+
+def read_image_file():
+    
 
 def main():
     # load arguments, read data into memory
