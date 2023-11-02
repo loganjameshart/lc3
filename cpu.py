@@ -6,7 +6,7 @@ import sys
 import array
 
 MEMORY_MAX = 1 << 16 # 65,536
-MEMORY = array.array('H', [0 for i in range(MEMORY_MAX)])
+MEMORY = array.array('H')
 
 MR_KBSR = 0xFE00
 MR_KBDR = 0xFE02
@@ -63,6 +63,13 @@ FLAG = {
 }
 
 
+def load_file(file_path):
+    with open(file_path, 'rb') as input_file:
+        MEMORY.frombytes(input_file.read())
+        print(MEMORY)
+        MEMORY.byteswap()
+
+
 def swap16(number):
     return (number << 8) | (number >> 8)
 
@@ -72,9 +79,9 @@ def memory_write(address, value):
 
 
 def memory_read(address):
-    pass
+    return MEMORY[address]
+    
         
-
 def update_flags(register):
     if REG[register] == 0:
         REG["R_COND"] = FLAG["FL_ZRO"]
@@ -84,10 +91,14 @@ def update_flags(register):
         REG["R_COND"] = FLAG["FL_POS"]
 
 
-def sign_extend(instruction, bit_size):
-    if (instruction >> (bit_size - 1)) & 1:
-        instruction |= (0xFFFF << bit_size)
-    return instruction
+def sign_extend(value, bits):
+    sign_bit = 1 << (bits - 1)
+    return (value & (sign_bit - 1)) - (value & sign_bit)
+
+# def sign_extend(instruction, bit_size):
+#    if (instruction >> (bit_size - 1)) & 1:
+#        instruction |= (0xFFFF << bit_size)
+#    return instruction
 
 
 def BRANCH(instruction):
@@ -105,7 +116,6 @@ def ADD(instruction):
     if imm5_flag:
         imm5 = sign_extend(instruction & 0x1F, 5)
         REG[destination_register_code] = REG[operand_register_1_code] + imm5
-        pass # add the number found in the last 5 bits
     else:
         operand_register_2_code = instruction & 0x7 # get rightmost three bits, which is the second operand register per the ADD instruction's documentaion (SR2)
         REG[destination_register_code] = REG[operand_register_1_code] + REG[operand_register_2_code]
@@ -161,7 +171,10 @@ def LOAD_REG(instruction):
 def STORE_REG(instruction):
     source_register_code = (instruction >> 9) & 0x7
     base_register_code = (instruction >> 6) & 0x7
-    offset = sign_extend((instruction & 0x3F), 6)
+    offset = sign_extend(instruction & 0x3F, 6)
+    print(REG[base_register_code])
+    print(REG[source_register_code])
+    print(offset)
     destination_memory_address = REG[base_register_code] + offset
     memory_write(destination_memory_address, REG[source_register_code])
 
@@ -222,10 +235,21 @@ def TRAP_OUT_FUNC():
 
 
 def TRAP_PUTS_FUNC():
-    character = MEMORY + REG[0]
-    while character:
-        print(chr(character))
-        character += 1
+    base_address = REG[0]
+    index = 1
+    while True:
+        try:
+            character = MEMORY[base_address + index]
+            if chr(character) not in (r'abcdefghijklmnopqrstuvwxqz!HW \n'):
+                index += 1
+                continue
+            else:
+                print(chr(character), end='')
+                index += 1
+                continue
+        except IndexError:
+            break
+    
     sys.stdout.flush()
 
 
@@ -253,6 +277,7 @@ def TRAP_PUTSP_FUNC():
 
 def TRAP_HALT_FUNC():
     print("HALT")
+    sys.exit()
 
 
 def TRAP(instruction):
@@ -273,58 +298,73 @@ def TRAP(instruction):
     else:
         print("Bad trapcode.")
 
-
-def read_image_file():
     
 
 def main():
     # load arguments, read data into memory
     # setup
     REG["R_COND"] = FLAG["FL_ZRO"]          # set condition flag to zero at start
-    REG["R_PC"] = START                     # set start position to START (0x3000)
-    
+    REG["R_PC"] = 0                     # set start position to START (0x3000)
+    load_file('hello.obj')
+
     while True:
-        instruction = read_memory(REG["R_PC"])  # read first instruction at START counter position
+        instruction = memory_read(REG["R_PC"])  # read first instruction at START counter position
+        print(f"Count: {REG["R_PC"]} Instruction: {instruction}")
         REG["R_PC"] += 1                        # add 1 to counter register to proceed to next instruction on next loop
         current_opcode = instruction >> 12      # get first 4 bits, which is the opcode
         
         # match opcode and execute instruction
-        match current_opcode:
-            case OPCODE.get("BR"):      # 0
-                BRANCH()
-            case OPCODE.get("ADD"):     # 1
-                ADD(instruction)
-            case OPCODE.get("LD"):      # 2
-                LOAD()
-            case OPCODE.get("ST"):      # 3
-                STORE()
-            case OPCODE.get("JSR"):     # 4
-                JUMP_REG()
-            case OPCODE.get("AND"):     # 5
-                BIT_AND()
-            case OPCODE.get("LDR"):     # 6
-                LOAD_REG()
-            case OPCODE.get("STR"):     # 7
-                STORE_REG()
-            case OPCODE.get("RTI"):     # 8
-                RTI()
-            case OPCODE.get("NOT"):     # 9
-                BIT_NOT()
-            case OPCODE.get("LDI"):     # 10
-                LOAD_INDIRECT()
-            case OPCODE.get("STI"):     # 11
-                STORE_INDIRECT()
-            case OPCODE.get("JMP"):     # 12
-                JUMP()
-            case OPCODE.get("RES"):     # 13
-                RES()
-            case OPCODE.get("LEA"):     # 14
-                LOAD_EFFECTIVE_ADDRESS()
-            case OPCODE.get("TRAP"):    # 15
-                TRAP()
-            case _:
-                print("No opcode caught.")
-                sys.exit()
+        if current_opcode == OPCODE.get("BR"):      # 0
+            BRANCH(instruction)
+            print('BRANCH')
+        elif current_opcode == OPCODE.get("ADD"):     # 1
+            ADD(instruction)
+            print('ADD')
+        elif current_opcode == OPCODE.get("LD"):      # 2
+            LOAD(instruction)
+            print('LOAD')
+        elif current_opcode == OPCODE.get("ST"):      # 3
+            STORE(instruction)
+            print('STORE')
+        elif current_opcode == OPCODE.get("JSR"):     # 4
+            JUMP_REG(instruction)
+            print('JUMP REG')
+        elif current_opcode == OPCODE.get("AND"):     # 5
+            BIT_AND(instruction)
+            print('BIT AND')
+        elif current_opcode == OPCODE.get("LDR"):     # 6
+            LOAD_REG(instruction)
+            print('LOAD REG')
+        elif current_opcode == OPCODE.get("STR"):     # 7
+            STORE_REG(instruction)
+            print('STORE REG')
+        elif current_opcode == OPCODE.get("RTI"):     # 8
+            RTI(instruction)
+            print('RTI')
+        elif current_opcode == OPCODE.get("NOT"):     # 9
+            BIT_NOT(instruction)
+            print('BIT NOT')
+        elif current_opcode == OPCODE.get("LDI"):     # 10
+            LOAD_INDIRECT(instruction)
+            print('LOAD INDIRECT')
+        elif current_opcode == OPCODE.get("STI"):     # 11
+            STORE_INDIRECT(instruction)
+            print('STORE INDIRECT')
+        elif current_opcode == OPCODE.get("JMP"):     # 12
+            JUMP(instruction)
+            print('JUMP')
+        elif current_opcode == OPCODE.get("RES"):     # 13
+            RES(instruction)
+            print('RES')
+        elif current_opcode == OPCODE.get("LEA"):     # 14
+            LOAD_EFFECTIVE_ADDRESS(instruction)
+            print('LEA')
+        elif current_opcode == OPCODE.get("TRAP"):    # 15
+            TRAP(instruction)
+            print('\nTRAP')
+        else:
+            print("No opcode caught.")
+            sys.exit()
 
 
 if __name__ == "__main__":
