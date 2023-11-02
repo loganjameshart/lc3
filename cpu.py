@@ -66,12 +66,7 @@ FLAG = {
 def load_file(file_path):
     with open(file_path, 'rb') as input_file:
         MEMORY.frombytes(input_file.read())
-        print(MEMORY)
-        MEMORY.byteswap()
-
-
-def swap16(number):
-    return (number << 8) | (number >> 8)
+        MEMORY.byteswap() # need to byteswap to change endianness
 
 
 def memory_write(address, value):
@@ -94,11 +89,6 @@ def update_flags(register):
 def sign_extend(value, bits):
     sign_bit = 1 << (bits - 1)
     return (value & (sign_bit - 1)) - (value & sign_bit)
-
-# def sign_extend(instruction, bit_size):
-#    if (instruction >> (bit_size - 1)) & 1:
-#        instruction |= (0xFFFF << bit_size)
-#    return instruction
 
 
 def BRANCH(instruction):
@@ -167,14 +157,11 @@ def LOAD_REG(instruction):
     REG[destination_register_code] = memory_read(REG[base_register_code] + offset)
     update_flags(destination_register_code)
 
-
+# not currently working - issue with unsigned int
 def STORE_REG(instruction):
     source_register_code = (instruction >> 9) & 0x7
     base_register_code = (instruction >> 6) & 0x7
     offset = sign_extend(instruction & 0x3F, 6)
-    print(REG[base_register_code])
-    print(REG[source_register_code])
-    print(offset)
     destination_memory_address = REG[base_register_code] + offset
     memory_write(destination_memory_address, REG[source_register_code])
 
@@ -240,7 +227,7 @@ def TRAP_PUTS_FUNC():
     while True:
         try:
             character = MEMORY[base_address + index]
-            if chr(character) not in (r'abcdefghijklmnopqrstuvwxqz!HW \n'):
+            if chr(character) not in (r'abcdefghijklmnopqrstuvwxqz!HW \n'): # basic test for Hello World, need to improve
                 index += 1
                 continue
             else:
@@ -261,7 +248,7 @@ def TRAP_IN_FUNC():
         else:
             break
     REG[0] = ord(character)
-    update_flags("R0") # only inputting key since update_flags function
+    update_flags(0) 
 
 
 def TRAP_PUTSP_FUNC():
@@ -309,7 +296,7 @@ def main():
 
     while True:
         instruction = memory_read(REG["R_PC"])  # read first instruction at START counter position
-        print(f"Count: {REG["R_PC"]} Instruction: {instruction}")
+        print(f"Count: {REG["R_PC"]} \t Instruction: {instruction}") # basic debugger
         REG["R_PC"] += 1                        # add 1 to counter register to proceed to next instruction on next loop
         current_opcode = instruction >> 12      # get first 4 bits, which is the opcode
         
