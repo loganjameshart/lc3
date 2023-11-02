@@ -2,6 +2,9 @@
 """
 LC-3 implementation.
 """
+### TO DO
+# consider enum.Enum for registers and opcodes
+
 import sys
 import array
 
