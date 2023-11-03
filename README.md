@@ -53,6 +53,14 @@ The LC-3 emulator will provide:
 - Reading and printing strings
 - Halting program execution
 
+## Debugger View - TO DO
+
+I'd like to implement a quick GUI in Tkinter that:
+
+- Allows you to step forwards and backwards in the program execution, one step at a time
+- Displays program output in a separate window (as opposed to terminal)
+- Provides functionality for loading .obj files from different areas (as opposed to roaming directories in the terminal)
+
 ## License
 
 This LC-3 emulator is provided under the MIT License.
