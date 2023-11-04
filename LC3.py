@@ -4,8 +4,11 @@ LC-3 implementation.
 Source tutorial: https://www.jmeiners.com/lc3-vm/
 """
 
+
 import sys
 import array
+import msvcrt
+from string import printable
 
 
 """ *** ----- HARDWARE EMULATION ----- *** """
@@ -72,20 +75,21 @@ FLAG = {
 
 
 def load_file(file_path):
-    """Loads file into LC-3's start location, 0x3000, using a temporary array."""
+    """Loads file into program's requested start location."""
     global MEMORY
-    program_index = 0x3000
     with open(file_path, "rb") as input_file:
         data = input_file.read()
         temp_array = array.array('H')
         temp_array.frombytes(data)
+        temp_array.byteswap()  # change endianness NOW to get correct address
+        origin = temp_array[0] # first 16 bits are start address 
         for item in temp_array:
-            MEMORY.insert(program_index, item)
-            program_index += 1
+            MEMORY.insert(origin, item)
+            origin += 1
 
-        del temp_array
-        del MEMORY[MEMORY_MAX:] # cleanup and return to memory limit
-        MEMORY.byteswap()
+    del temp_array
+    del MEMORY[MEMORY_MAX:] # cleanup and return to memory limit
+
 
 
 def memory_write(address, value):
@@ -94,14 +98,13 @@ def memory_write(address, value):
 
 
 def memory_read(address):
-    """Reads value from particular memory address or keyboard register."""
+    """Reads value from particular memory address or keyboard memory."""
     if address == MR_KBDR:
-        char = input()
-        if char:
+        if not msvcrt.kbhit():
             MEMORY[MR_KBSR] = (1 << 15)
-            MEMORY[MR_KBDR] = ord(input())
-        else:
-            MEMORY[MR_KBSR] = 0
+            MEMORY[MR_KBDR] = ord(msvcrt.getch())
+    else: 
+        MEMORY[MR_KBSR] = 0
 
     return MEMORY[address]
 
@@ -255,12 +258,13 @@ def LOAD_EFFECTIVE_ADDRESS(instruction):
 
 
 def TRAP_GETC_FUNC():
-    REG[0] = ord(input())
+    REG[0] = ord(sys.stdin.read(1))
     update_flags(0)
 
 
 def TRAP_OUT_FUNC():
-    print(REG[0])
+    print(chr(REG[0]))
+    sys.stdout.flush()
 
 
 def TRAP_PUTS_FUNC():
@@ -269,7 +273,7 @@ def TRAP_PUTS_FUNC():
     while True:
         try:
             character = MEMORY[base_address + index]
-            if chr(character) not in ("abcdefghijklmnopqrstuvwxqzABCDEFGHIJKLMNOPQRSTUVWXYZ!? \n"):  # basic test for Hello World, need to improve
+            if chr(character) not in printable:  # basic test for Hello World, need to improve
                 index += 1
                 continue
             else:
@@ -344,6 +348,7 @@ def main():
             instruction = memory_read(REG["R_PC"])
             REG["R_PC"] += 1
             current_opcode = instruction >> 12
+            print(f"Count: {REG['R_PC']}\t Instruction: {bin(instruction)}")
 
             if current_opcode == OPCODE["BR"]:  # 0
                 BRANCH(instruction)
@@ -354,7 +359,7 @@ def main():
             elif current_opcode == OPCODE["LD"]:  # 2
                 LOAD(instruction)
 
-            elif current_opcode == OPCODE.get("ST"):  # 3
+            elif current_opcode == OPCODE["ST"]:  # 3
                 STORE(instruction)
 
             elif current_opcode == OPCODE["JSR"]:  # 4
@@ -400,3 +405,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
